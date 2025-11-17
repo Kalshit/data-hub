@@ -350,10 +350,6 @@ classDiagram
     TickerPlant ..> TickerMessage : handles
     TickerPlant ..> BBOMessage : generates
 
-    style KalshiWebSocketClient,HistoricalDataFetcher,MarketDataRecorder fill:#e1f5ff
-    style TickerPlant,OrderBook fill:#fff4e6
-    style QuestDBRDB,QuestDBHDB fill:#e8f5e9
-    style TradeMessage,OrderBookDeltaMessage,TickerMessage,BBOMessage fill:#f5f5f5
 ```
 
 **Key Design Patterns**:
@@ -399,11 +395,6 @@ sequenceDiagram
     
     Note over TP: Total latency: T0 + 100μs
 
-    style Kalshi fill:#f5f5f5
-    style WS fill:#e1f5ff
-    style TP fill:#fff4e6
-    style RDB fill:#e8f5e9
-    style Sub fill:#f3e5f5
 ```
 
 **Critical Path Optimization**:
@@ -464,11 +455,6 @@ sequenceDiagram
     
     Note over OB: Order book state<br/>maintained in-memory
 
-    style Kalshi fill:#f5f5f5
-    style WS fill:#e1f5ff
-    style TP,OB fill:#fff4e6
-    style RDB fill:#e8f5e9
-    style Sub fill:#f3e5f5
 ```
 
 **Recovery Strategy**:
@@ -531,11 +517,6 @@ sequenceDiagram
     
     Note over HDB: Historical data<br/>queryable from HDB<br/>+ S3 archive
 
-    style Scheduler fill:#ffebee
-    style Migrator fill:#fff4e6
-    style RDB,HDB fill:#e8f5e9
-    style S3 fill:#f3e5f5
-    style FS fill:#f5f5f5
 ```
 
 **Storage Tier Strategy**:
@@ -605,10 +586,6 @@ sequenceDiagram
     Fetcher-->>Admin: backfill report
     Note left of Admin: - Trades inserted: 1.2M<br/>- Date range: complete<br/>- Gaps: none<br/>- Duration: 45min
 
-    style Admin fill:#ffebee
-    style Fetcher,Validator fill:#e1f5ff
-    style API fill:#f5f5f5
-    style HDB fill:#e8f5e9
 ```
 
 **Rate Limiting Strategy**:
@@ -709,13 +686,6 @@ graph TB
     TP -->|errors| LOG
     WS -->|events| LOG
     
-    style Ingestion fill:#e1f5ff
-    style Processing fill:#fff4e6
-    style StorageHot,StorageCold fill:#e8f5e9
-    style S3 fill:#f3e5f5
-    style Distribution fill:#e0f7fa
-    style Clients fill:#fffde7
-    style Ops fill:#ffebee
 ```
 
 **Architectural Layers**:
