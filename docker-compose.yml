@@ -1,0 +1,28 @@
+version: "3.9"
+
+services:
+  app:
+    build: .
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+    depends_on:
+      - questdb
+    working_dir: /app
+    command: ["bash"]
+
+  questdb:
+    image: questdb/questdb:7.3.10
+    environment:
+      - QDB_LINE_TCP_ENABLED=true
+    ports:
+      - "9000:9000" # Web UI
+      - "9009:9009" # ILP
+      - "8812:8812" # Postgres wire
+    volumes:
+      - questdb-data:/var/lib/questdb
+
+volumes:
+  questdb-data:
+

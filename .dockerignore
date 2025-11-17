@@ -1,0 +1,15 @@
+.git
+__pycache__
+.pytest_cache
+.venv
+*.pyc
+*.pyo
+*.pyd
+*.log
+dist
+build
+.env
+*.pem
+keys/
+data/
+

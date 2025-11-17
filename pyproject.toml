@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kalshi-platform"
+version = "0.1.0"
+description = "Kalshi market data ingestion and historical backfill platform"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+  { name = "Kalshi Platform", email = "engineering@example.com" }
+]
+dependencies = [
+  "requests>=2.31.0",
+  "websockets>=12.0",
+  "cryptography>=43.0.0",
+  "questdb>=1.5.0",
+  "sortedcontainers>=2.4.0"
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.4.0",
+  "pytest-asyncio>=0.23.0",
+  "pytest-cov>=4.1.0"
+]
