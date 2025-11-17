@@ -6,9 +6,13 @@ Minimal, production-focused toolkit for ingesting, normalizing, and persisting K
 - **Async WebSocket client** and ticker plant primitives
 - **QuestDB hot/warm writers** (`storage/questdb_rdb.py`, `storage/questdb_hdb.py`)
 - **Historical backfill + recorder CLIs** using RSA-signed authentication
-- **Docker + `.env` workflow** for reproducible local runs
 
-All extraneous UML/diagram content was removed—everything below is actionable setup material.
+## Requirements
+
+- Python 3.10+ with pip for native execution
+- QuestDB 7.x reachable over ILP (9009) and Postgres wire (8812)
+- Docker Desktop or compatible runtime (optional container workflow)
+- OpenSSL-capable tooling for generating RSA key pairs (authenticated fetcher)
 
 ---
 
@@ -18,16 +22,12 @@ All extraneous UML/diagram content was removed—everything below is actionable 
 python -m venv .venv
 . .venv/Scripts/activate        # Windows PowerShell
 pip install -r requirements.txt
-cp env.example .env              # fill in keys + QuestDB host/port
 python -m kalshi_platform.tools.public_demo --series KXHIGHNY
 ```
 
 ### Environment Variables
 
 - `env.example` documents every required value.
-- `.env` is intentionally ignored—never commit secrets.
-- All CLI tools load `.env` automatically; CLI flags override env values.
-
 Key pairs to set:
 
 | Variable | Purpose |
@@ -63,16 +63,6 @@ Notes:
 
 ```bash
 docker build -t kalshi-platform .
-```
-
-### One-off CLI Runs
-
-```bash
-# Run public demo inside the container, mounting your .env + keys
-docker run --rm --env-file .env ^
-  -v %cd%/keys:/app/keys ^
-  kalshi-platform ^
-  python -m kalshi_platform.tools.public_demo --series KXHIGHNY
 ```
 
 ### docker compose (app + QuestDB)
@@ -152,7 +142,7 @@ Auxiliary files:
 
 ---
 
-Happy building.
+
 
 ## Public REST Client & Data Preview Tools
 
@@ -160,7 +150,7 @@ The `kalshi_platform/api/public_client.py` module wraps the publicly documented 
 
 - **Series → Markets → Orderbook demo** (mirrors the diagrammed flow in Section 5):  
   `python -m kalshi_platform.tools.public_demo --series KXHIGHNY`
-- **Historical JSON previewer** for large S3 snapshots (adapted from the user-provided script above):  
+- **Historical JSON previewer** for large S3 snapshots:  
   `python -m kalshi_platform.tools.market_data_preview --url https://kalshi-public-docs.s3.amazonaws.com/reporting/market_data_2023-11-13.json --interactive`
 
 Both commands operate without API keys and rely solely on the unauthenticated endpoints described in the quick start guide. For paginated trade retrievals (`GET /markets/trades`), the client follows the cursor semantics outlined in the official documentation ([link](https://docs.kalshi.com/api-reference/market/get-trades)).
@@ -187,15 +177,13 @@ Hot-path (RDB) and historical (HDB) adapters live under `kalshi_platform/storage
 - `questdb_rdb.QuestDBRDBWriter` wraps the official `questdb.ingress.Sender`, formats trades/orderbook deltas/tickers/BBO rows, and converts millisecond timestamps to nanoseconds automatically.
 - `questdb_hdb.QuestDBHDBClient` executes Postgres-wire SQL for daily migrations, Parquet exports, and retention cleanup. The generated statements mirror the schema optimizations documented in Section 5.1.
 
-Configuration is sourced from `.env.example` (never commit actual `.env` secrets). Copy the template, adjust `QUESTDB_*` variables, and wire the adapters into your ingestion/ticker plant services.
-
 ---
 
 ## Recorder & Historical Backfill Tooling
 
 - `kalshi_platform/tools/market_data_recorder.py`: consumes JSONL feeds (`{"channel":"trade","message":{...}}`) and batches them into QuestDB. Example:  
   `python -m kalshi_platform.tools.market_data_recorder --feed-file data/trades.jsonl --questdb-host localhost`
-- `kalshi_platform/tools/historical_fetcher.py`: uses the RSA-signed authentication flow showcased in the provided snippet to hit the authenticated `/trade-api/v2/markets/trades` endpoint ([docs](https://docs.kalshi.com/api-reference/market/get-trades)). Example backfill:  
+- `kalshi_platform/tools/historical_fetcher.py`: uses the RSA-signed authentication flow to hit the authenticated `/trade-api/v2/markets/trades` endpoint ([docs](https://docs.kalshi.com/api-reference/market/get-trades)). Example backfill:  
   `python -m kalshi_platform.tools.historical_fetcher --ticker PRES-2024 --start 2024-01-01 --end 2024-01-07 --api-key <ID> --private-key keys/kalshi_private.pem`
 
 The fetcher implements exponential backoff for `429 Too Many Requests` responses, mirroring the Historical Backfill diagram in Section 5 and the GitLab team's production workflow. Both tools rely on the QuestDB writers above, so recorded data lands in the same schema as the real-time flow.
