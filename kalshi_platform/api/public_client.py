@@ -42,7 +42,10 @@ class PublicKalshiClient:
         timeout: float = 10.0,
         session: Optional[requests.Session] = None,
     ) -> None:
-        self.base_url = base_url.rstrip("/")
+        normalized = base_url.rstrip("/")
+        if "/trade-api/" not in normalized:
+            normalized = f"{normalized}/trade-api/v2"
+        self.base_url = normalized
         self.timeout = timeout
         self.session = session or requests.Session()
     

@@ -106,6 +106,29 @@ All tests live under `tests/` and cover order books, QuestDB writers, WebSocket 
    ORDER BY timestamp DESC
    LIMIT 20;
    ```
+3. Run the unauthenticated REST demo to confirm live markets resolve:
+   ```
+   python -m kalshi_platform.tools.public_demo --series KXINXY
+   ```
+
+### CLI smoke tests
+
+These quick commands mirror what we run during manual verification:
+
+1. Backfill a small range into QuestDB (same command as above).
+2. Inspect live public endpoints:
+   ```
+   python -m kalshi_platform.tools.public_demo --series KXINXY
+   ```
+3. Capture orderbook snapshots for every ticker in the series:
+   ```
+   python scripts/sample_orderbooks.py --series KXINXY --iterations 3 --interval 10
+   ```
+   Snapshots land in `logs/*.jsonl`.
+4. When finished, delete the snapshot artifacts (and keep the repo clean):
+   ```
+   python scripts/cleanup_orderbook_logs.py --out-dir logs
+   ```
 
 ---
 
@@ -136,6 +159,12 @@ Auxiliary files:
 - **Record live WebSocket feed**  
   Stream to JSONL externally, then  
   `python -m kalshi_platform.tools.market_data_recorder --feed-file data/live.jsonl`
+
+- **Ad-hoc orderbook snapshot**  
+  `python scripts/sample_orderbooks.py --series KXINXY --iterations 3`
+
+- **Cleanup snapshot artifacts**  
+  `python scripts/cleanup_orderbook_logs.py --out-dir logs`
 
 - **Extend ticker plant**  
   Implement publishers by subclassing or replacing `InMemoryPublisher` inside `ticker_plant/processor.py`.

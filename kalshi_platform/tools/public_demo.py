@@ -42,10 +42,18 @@ def demo_markets(
 def demo_orderbook(client: PublicKalshiClient, market_ticker: str) -> None:
     """Display top 5 price levels for both yes and no sides."""
     print_header(f"Orderbook for {market_ticker}")
-    orderbook = client.get_market_orderbook(market_ticker).get("orderbook", {})
+    payload = client.get_market_orderbook(market_ticker)
+    orderbook = payload.get("orderbook") or {}
     for side in ("yes", "no"):
         print(f"{side.upper()} BIDS:")
-        for price, qty in orderbook.get(side, [])[:5]:
+        ladder = orderbook.get(side) or []
+        if not ladder:
+            print("  (no quotes)")
+            print()
+            continue
+        for price, qty in ladder[:5]:
+            if price is None or qty is None:
+                continue
             print(f"  {price:>5}¢ x {qty}")
         print()
 
