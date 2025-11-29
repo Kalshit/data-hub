@@ -73,6 +73,70 @@ class PublicKalshiClient:
         """
         return self._request("GET", f"/events/{ticker.upper()}")
     
+    def list_series(
+        self,
+        limit: int = 200,
+    ) -> Generator[Dict[str, Any], None, None]:
+        """
+        Iterate over all series with cursor-based pagination.
+        
+        Args:
+            limit: Results per page (max 200)
+            
+        Yields:
+            Individual series dictionaries
+        """
+        params: Dict[str, Any] = {"limit": limit}
+        cursor: Optional[str] = None
+        while True:
+            if cursor:
+                params["cursor"] = cursor
+            payload = self._request("GET", "/series", params=params)
+            series_list = payload.get("series", [])
+            if not isinstance(series_list, list):
+                raise KalshiApiError("Expected list of series")
+            for series in series_list:
+                yield series
+            cursor = payload.get("cursor")
+            if not cursor:
+                break
+    
+    def list_events(
+        self,
+        series_ticker: Optional[str] = None,
+        status: Optional[str] = None,
+        limit: int = 200,
+    ) -> Generator[Dict[str, Any], None, None]:
+        """
+        Iterate over events with optional series filter.
+        
+        Args:
+            series_ticker: Filter by series (e.g., "KXHIGHNY")
+            status: Filter by status ("open", "closed", etc.)
+            limit: Results per page (max 200)
+            
+        Yields:
+            Individual event dictionaries
+        """
+        params: Dict[str, Any] = {"limit": limit}
+        if series_ticker:
+            params["series_ticker"] = series_ticker.upper()
+        if status:
+            params["status"] = status
+        cursor: Optional[str] = None
+        while True:
+            if cursor:
+                params["cursor"] = cursor
+            payload = self._request("GET", "/events", params=params)
+            events_list = payload.get("events", [])
+            if not isinstance(events_list, list):
+                raise KalshiApiError("Expected list of events")
+            for event in events_list:
+                yield event
+            cursor = payload.get("cursor")
+            if not cursor:
+                break
+    
     def get_markets(
         self,
         series_ticker: Optional[str] = None,
@@ -99,6 +163,58 @@ class PublicKalshiClient:
             params["limit"] = int(limit)
         return self._request("GET", "/markets", params=params)
     
+    def list_markets_paginated(
+        self,
+        series_ticker: Optional[str] = None,
+        event_ticker: Optional[str] = None,
+        status: Optional[str] = None,
+        limit: int = 200,
+    ) -> Generator[Dict[str, Any], None, None]:
+        """
+        Iterate over markets with cursor-based pagination.
+        
+        Args:
+            series_ticker: Filter by series (e.g., "KXHIGHNY")
+            event_ticker: Filter by event
+            status: Filter by status ("open", "closed", etc.)
+            limit: Results per page (max 200)
+            
+        Yields:
+            Individual market dictionaries
+        """
+        params: Dict[str, Any] = {"limit": limit}
+        if series_ticker:
+            params["series_ticker"] = series_ticker.upper()
+        if event_ticker:
+            params["event_ticker"] = event_ticker.upper()
+        if status:
+            params["status"] = status
+        cursor: Optional[str] = None
+        while True:
+            if cursor:
+                params["cursor"] = cursor
+            payload = self._request("GET", "/markets", params=params)
+            markets_list = payload.get("markets", [])
+            if not isinstance(markets_list, list):
+                raise KalshiApiError("Expected list of markets")
+            for market in markets_list:
+                yield market
+            cursor = payload.get("cursor")
+            if not cursor:
+                break
+    
+    def get_market(self, ticker: str) -> Dict[str, Any]:
+        """
+        Retrieve full market metadata by ticker.
+        
+        Args:
+            ticker: Market identifier
+            
+        Returns:
+            JSON response containing complete market details
+        """
+        return self._request("GET", f"/markets/{ticker.upper()}")
+    
     def get_market_orderbook(self, ticker: str) -> Dict[str, Any]:
         """
         Retrieve current orderbook for a market.
@@ -110,6 +226,70 @@ class PublicKalshiClient:
             JSON response with yes/no bid ladders
         """
         return self._request("GET", f"/markets/{ticker.upper()}/orderbook")
+    
+    def get_market_candlesticks(
+        self,
+        series_ticker: str,
+        ticker: str,
+        start_ts: Optional[int] = None,
+        end_ts: Optional[int] = None,
+        period_interval: int = 1440,  # 1 day in minutes
+    ) -> Dict[str, Any]:
+        """
+        Retrieve OHLC candlestick data for a market.
+        
+        Args:
+            series_ticker: Series identifier
+            ticker: Market identifier
+            start_ts: Start timestamp (Unix seconds)
+            end_ts: End timestamp (Unix seconds)
+            period_interval: Candle period in minutes (default: 1440 = 1 day)
+            
+        Returns:
+            JSON response with candlestick array
+        """
+        params: Dict[str, Any] = {"period_interval": period_interval}
+        if start_ts:
+            params["start_ts"] = int(start_ts)
+        if end_ts:
+            params["end_ts"] = int(end_ts)
+        return self._request(
+            "GET",
+            f"/series/{series_ticker.upper()}/markets/{ticker.upper()}/candlesticks",
+            params=params,
+        )
+    
+    def get_event_candlesticks(
+        self,
+        series_ticker: str,
+        event_ticker: str,
+        start_ts: Optional[int] = None,
+        end_ts: Optional[int] = None,
+        period_interval: int = 1440,  # 1 day in minutes
+    ) -> Dict[str, Any]:
+        """
+        Retrieve OHLC candlestick data for an event.
+        
+        Args:
+            series_ticker: Series identifier
+            event_ticker: Event identifier
+            start_ts: Start timestamp (Unix seconds)
+            end_ts: End timestamp (Unix seconds)
+            period_interval: Candle period in minutes (default: 1440 = 1 day)
+            
+        Returns:
+            JSON response with candlestick array
+        """
+        params: Dict[str, Any] = {"period_interval": period_interval}
+        if start_ts:
+            params["start_ts"] = int(start_ts)
+        if end_ts:
+            params["end_ts"] = int(end_ts)
+        return self._request(
+            "GET",
+            f"/series/{series_ticker.upper()}/events/{event_ticker.upper()}/candlesticks",
+            params=params,
+        )
     
     def iter_trades(
         self,

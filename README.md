@@ -208,14 +208,106 @@ Hot-path (RDB) and historical (HDB) adapters live under `kalshi_platform/storage
 
 ---
 
-## Recorder & Historical Backfill Tooling
+## Historical Backfill
 
-- `kalshi_platform/tools/market_data_recorder.py`: consumes JSONL feeds (`{"channel":"trade","message":{...}}`) and batches them into QuestDB. Example:  
-  `python -m kalshi_platform.tools.market_data_recorder --feed-file data/trades.jsonl --questdb-host localhost`
-- `kalshi_platform/tools/historical_fetcher.py`: uses the RSA-signed authentication flow to hit the authenticated `/trade-api/v2/markets/trades` endpoint ([docs](https://docs.kalshi.com/api-reference/market/get-trades)). Example backfill:  
-  `python -m kalshi_platform.tools.historical_fetcher --ticker PRES-2024 --start 2024-01-01 --end 2024-01-07 --api-key <ID> --private-key keys/kalshi_private.pem`
+The full backfill tool pulls series, events, markets, trades, and OHLC data from Kalshi into QuestDB. It supports volume filtering to focus on active markets.
 
-The fetcher implements exponential backoff for `429 Too Many Requests` responses, mirroring the Historical Backfill diagram in Section 5 and the GitLab team's production workflow. Both tools rely on the QuestDB writers above, so recorded data lands in the same schema as the real-time flow.
+### QuestDB on DigitalOcean
+
+Spin up a droplet (4GB+ RAM recommended) and install Docker:
+
+```bash
+ssh root@<droplet-ip>
+apt update && apt install -y docker.io docker-compose
+mkdir -p /opt/questdb && cd /opt/questdb
+```
+
+Create `docker-compose.yml`:
+
+```yaml
+version: "3.8"
+services:
+  questdb:
+    image: questdb/questdb:7.3.10
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+      - "9009:9009"
+      - "8812:8812"
+    volumes:
+      - ./data:/var/lib/questdb
+```
+
+Start it:
+
+```bash
+docker-compose up -d
+```
+
+QuestDB web console is now at `http://<droplet-ip>:9000`.
+
+### Environment Setup
+
+Set these in your `.env` or export them:
+
+```
+KALSHI_API_KEY=your-api-key
+KALSHI_PRIVATE_KEY_PATH=keys/kalshi_private.pem
+QUESTDB_HDB_HOST=<droplet-ip>
+QUESTDB_HDB_PORT=8812
+```
+
+### Running the Backfill
+
+Basic usage:
+
+```bash
+python -m kalshi_platform.tools.full_backfill --start-date 2024-01-01
+```
+
+Filter to high-volume markets only (10k+ contracts traded):
+
+```bash
+python -m kalshi_platform.tools.full_backfill --start-date 2024-01-01 --min-volume 10000
+```
+
+The volume filter scans daily market reports across the entire date range and caches results in `high_volume_tickers_cache.json` for subsequent runs.
+
+Other options:
+
+| Flag | Description |
+|------|-------------|
+| `--end-date` | End of backfill range (defaults to today) |
+| `--series` | Filter to specific series prefix (e.g., `KXINXY`) |
+| `--reset-tables` | Drop and recreate tables before backfill |
+| `--continue` | Resume without dropping existing data |
+| `-v` | Verbose logging |
+
+### Viewing Results
+
+Open the QuestDB console at `http://<droplet-ip>:9000` and run queries:
+
+```sql
+-- Trade counts by ticker
+SELECT ticker, count() as trades FROM trades_hdb GROUP BY ticker ORDER BY trades DESC LIMIT 20;
+
+-- Daily OHLC for a market
+SELECT * FROM candlesticks WHERE ticker = 'KXBTC-25NOV24' ORDER BY end_period_ts;
+
+-- Recent trades
+SELECT * FROM trades_hdb ORDER BY created_time DESC LIMIT 100;
+```
+
+### Tables
+
+| Table | Contents |
+|-------|----------|
+| `series` | Series metadata |
+| `events` | Events within series |
+| `markets` | Market metadata |
+| `trades_hdb` | Historical trades |
+| `candlesticks` | OHLC data from API |
+| `backfill_progress` | Resume tracking |
 
 ---
 
