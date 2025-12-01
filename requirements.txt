@@ -4,3 +4,4 @@ cryptography>=43.0.0
 questdb>=1.5.0
 sortedcontainers>=2.4.0
 psycopg2-binary>=2.9.9
+colorama>=0.4.6

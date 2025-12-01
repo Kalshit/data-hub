@@ -400,6 +400,10 @@ class FullBackfiller:
                 self._backfill_trades(market_ticker)
                 self._backfill_candlesticks(series_ticker, market_ticker)
         
+        # Generate OHLC aggregations from trades
+        logger.info("Generating OHLC aggregations from trades...")
+        self._generate_ohlc()
+        
         logger.info("=" * 60)
         logger.info("Backfill complete!")
         logger.info(f"Series: {self.stats['series']}")
@@ -409,6 +413,8 @@ class FullBackfiller:
             logger.info(f"Markets skipped (low volume): {self.stats['markets_skipped']}")
         logger.info(f"Trades: {self.stats['trades']}")
         logger.info(f"Candlesticks: {self.stats['candlesticks']}")
+        logger.info(f"OHLC Daily: {self.stats.get('ohlc_daily', 0)}")
+        logger.info(f"OHLC Hourly: {self.stats.get('ohlc_hourly', 0)}")
         logger.info("=" * 60)
         
         return self.stats
@@ -668,6 +674,27 @@ class FullBackfiller:
         
         return total_candles
     
+    def _generate_ohlc(self) -> None:
+        """
+        Generate OHLC aggregations from trades_hdb table.
+        
+        Uses QuestDB SAMPLE BY for efficient time-series aggregation.
+        """
+        try:
+            logger.info("  Generating daily OHLC (ohlc_1d)...")
+            daily_count = self.hdb_writer.generate_ohlc_daily()
+            self.stats["ohlc_daily"] = daily_count
+            logger.info(f"    Generated {daily_count} daily OHLC records")
+        except Exception as e:
+            logger.warning(f"  Failed to generate daily OHLC: {e}")
+        
+        try:
+            logger.info("  Generating hourly OHLC (ohlc_1h)...")
+            hourly_count = self.hdb_writer.generate_ohlc_hourly()
+            self.stats["ohlc_hourly"] = hourly_count
+            logger.info(f"    Generated {hourly_count} hourly OHLC records")
+        except Exception as e:
+            logger.warning(f"  Failed to generate hourly OHLC: {e}")
 
 
 def parse_date(val: str) -> dt.date:

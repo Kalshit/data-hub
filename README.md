@@ -41,17 +41,43 @@ Key pairs to set:
 
 ## Running the Tooling
 
-| Command | Description |
-| --- | --- |
-| `python -m kalshi_platform.tools.public_demo --series KXHIGHNY` | Snapshot REST demo (series → markets → orderbook → trades) |
-| `python -m kalshi_platform.tools.market_data_recorder --feed-file data/feed.jsonl` | Replay JSONL dumps into QuestDB (uses env QuestDB host/port) |
-| `python -m kalshi_platform.tools.historical_fetcher --ticker PRES-2024 --start 2024-01-01 --end 2024-01-07` | Authenticated historical backfill with env fallbacks |
+### Data Management Tools
 
-Notes:
+| Tool | Command | Key Flags |
+|------|---------|-----------|
+| **Full Backfill** | `python -m kalshi_platform.tools.full_backfill` | `--start-date`, `--end-date`, `--series`, `--min-volume`, `--reset-tables`, `--continue` |
+| **Fix Markets** | `python -m kalshi_platform.tools.fix_markets` | `--from-cache`, `--from-all-tables`, `--dry-run` |
+| **Fix Candlesticks** | `python -m kalshi_platform.tools.fix_candlesticks` | `--from-backfill-progress`, `--dry-run`, `--start-date`, `--end-date` |
+| **Generate OHLC** | `python -m kalshi_platform.tools.generate_ohlc` | `--reset`, `--daily-only`, `--hourly-only` |
+| **Check Consistency** | `python -m kalshi_platform.tools.check_consistency` | None (quick sanity check) |
 
-- Recorder expects JSONL with `{"channel": "...", "message": {...}}`.
-- Historical fetcher uses exponential backoff for `429` responses.
-- All tools honor `KALSHI_BASE_URL` and `QUESTDB_*` when flags are omitted.
+**Example Usage:**
+```bash
+# Full backfill with volume filter
+python -m kalshi_platform.tools.full_backfill --start-date 2024-01-01 --min-volume 10000
+
+# Fix markets from cache
+python -m kalshi_platform.tools.fix_markets --from-cache --dry-run
+
+# Generate OHLC from trades
+python -m kalshi_platform.tools.generate_ohlc --reset
+
+# Quick sanity check
+python -m kalshi_platform.tools.check_consistency
+```
+
+### Demo & Recording Tools
+
+| Tool | Command | Key Flags |
+|------|---------|-----------|
+| **Public Demo** | `python -m kalshi_platform.tools.public_demo` | `--series` |
+| **Market Data Recorder** | `python -m kalshi_platform.tools.market_data_recorder` | `--feed-file`, `--batch-size` |
+| **Historical Fetcher** | `python -m kalshi_platform.tools.historical_fetcher` | `--ticker`, `--start`, `--end` |
+
+**Notes:**
+- All tools support `--help` for full documentation
+- Recorder expects JSONL with `{"channel": "...", "message": {...}}`
+- Tools honor `KALSHI_BASE_URL` and `QUESTDB_*` environment variables
 
 ---
 
@@ -304,9 +330,11 @@ SELECT * FROM trades_hdb ORDER BY created_time DESC LIMIT 100;
 |-------|----------|
 | `series` | Series metadata |
 | `events` | Events within series |
-| `markets` | Market metadata |
+| `markets` | Market metadata (all fields from API) |
 | `trades_hdb` | Historical trades |
-| `candlesticks` | OHLC data from API |
+| `candlesticks` | OHLC data from Kalshi API |
+| `ohlc_1d` | Daily OHLC aggregated from trades |
+| `ohlc_1h` | Hourly OHLC aggregated from trades |
 | `backfill_progress` | Resume tracking |
 
 ---
