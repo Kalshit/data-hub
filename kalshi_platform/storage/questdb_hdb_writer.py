@@ -66,21 +66,45 @@ TABLE_DEFINITIONS = {
         CREATE TABLE markets (
             ticker SYMBOL CAPACITY 65536 CACHE,
             event_ticker SYMBOL CAPACITY 4096 CACHE,
+            market_type SYMBOL CAPACITY 16,
             title STRING,
             subtitle STRING,
+            yes_sub_title STRING,
+            no_sub_title STRING,
             category STRING,
             status SYMBOL CAPACITY 16,
+            result SYMBOL CAPACITY 8,
             yes_bid DOUBLE,
             yes_ask DOUBLE,
             no_bid DOUBLE,
             no_ask DOUBLE,
             last_price DOUBLE,
+            previous_yes_bid DOUBLE,
+            previous_yes_ask DOUBLE,
+            previous_price DOUBLE,
             volume LONG,
             volume_24h LONG,
             open_interest LONG,
             liquidity LONG,
+            notional_value LONG,
+            settlement_value LONG,
+            risk_limit_cents LONG,
+            tick_size INT,
+            settlement_timer_seconds INT,
+            can_close_early BOOLEAN,
+            strike_type SYMBOL CAPACITY 16,
+            floor_strike DOUBLE,
+            cap_strike DOUBLE,
+            functional_strike STRING,
+            expiration_value STRING,
+            rules_primary STRING,
+            rules_secondary STRING,
+            open_time TIMESTAMP,
             close_time TIMESTAMP,
+            expected_expiration_time TIMESTAMP,
             expiration_time TIMESTAMP,
+            latest_expiration_time TIMESTAMP,
+            fee_waiver_expiration_time TIMESTAMP,
             created_time TIMESTAMP
         ) TIMESTAMP(created_time) PARTITION BY YEAR WAL
     """,
@@ -452,35 +476,27 @@ class QuestDBHDBWriter:
         cursor.execute(
             """
             INSERT INTO markets (
-                ticker, event_ticker, title, subtitle,
-                category, status, yes_bid, yes_ask,
-                no_bid, no_ask, last_price, volume, volume_24h,
-                open_interest, liquidity, close_time, expiration_time,
-                created_time
+                ticker, event_ticker, market_type, title, subtitle,
+                yes_sub_title, no_sub_title, category, status, result,
+                yes_bid, yes_ask, no_bid, no_ask, last_price,
+                previous_yes_bid, previous_yes_ask, previous_price,
+                volume, volume_24h, open_interest, liquidity,
+                notional_value, settlement_value, risk_limit_cents,
+                tick_size, settlement_timer_seconds, can_close_early,
+                strike_type, floor_strike, cap_strike, functional_strike,
+                expiration_value, rules_primary, rules_secondary,
+                open_time, close_time, expected_expiration_time,
+                expiration_time, latest_expiration_time,
+                fee_waiver_expiration_time, created_time
             ) VALUES (
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                %s, %s, %s, %s, %s, %s, %s, %s
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                %s, %s
             )
             """,
-            (
-                market.get("ticker"),
-                market.get("event_ticker"),
-                market.get("title"),
-                market.get("subtitle"),
-                market.get("category"),
-                market.get("status"),
-                market.get("yes_bid"),
-                market.get("yes_ask"),
-                market.get("no_bid"),
-                market.get("no_ask"),
-                market.get("last_price"),
-                market.get("volume"),
-                market.get("volume_24h"),
-                market.get("open_interest"),
-                market.get("liquidity"),
-                _parse_timestamp(market.get("close_time")),
-                _parse_timestamp(market.get("expiration_time")),
-                _parse_timestamp(market.get("created_time"), default_to_now=True),            ),
+            _extract_market_values(market),
         )
         self.connection.commit()
         cursor.close()
@@ -506,35 +522,27 @@ class QuestDBHDBWriter:
             cursor.execute(
                 """
                 INSERT INTO markets (
-                    ticker, event_ticker, title, subtitle,
-                    category, status, yes_bid, yes_ask,
-                    no_bid, no_ask, last_price, volume, volume_24h,
-                    open_interest, liquidity, close_time, expiration_time,
-                    created_time
+                    ticker, event_ticker, market_type, title, subtitle,
+                    yes_sub_title, no_sub_title, category, status, result,
+                    yes_bid, yes_ask, no_bid, no_ask, last_price,
+                    previous_yes_bid, previous_yes_ask, previous_price,
+                    volume, volume_24h, open_interest, liquidity,
+                    notional_value, settlement_value, risk_limit_cents,
+                    tick_size, settlement_timer_seconds, can_close_early,
+                    strike_type, floor_strike, cap_strike, functional_strike,
+                    expiration_value, rules_primary, rules_secondary,
+                    open_time, close_time, expected_expiration_time,
+                    expiration_time, latest_expiration_time,
+                    fee_waiver_expiration_time, created_time
                 ) VALUES (
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s
                 )
                 """,
-                (
-                    market.get("ticker"),
-                    market.get("event_ticker"),
-                    market.get("title"),
-                    market.get("subtitle"),
-                    market.get("category"),
-                    market.get("status"),
-                    market.get("yes_bid"),
-                    market.get("yes_ask"),
-                    market.get("no_bid"),
-                    market.get("no_ask"),
-                    market.get("last_price"),
-                    market.get("volume"),
-                    market.get("volume_24h"),
-                    market.get("open_interest"),
-                    market.get("liquidity"),
-                    _parse_timestamp(market.get("close_time")),
-                    _parse_timestamp(market.get("expiration_time")),
-                    _parse_timestamp(market.get("created_time"), default_to_now=True),                ),
+                _extract_market_values(market),
             )
             count += 1
         
@@ -628,6 +636,10 @@ class QuestDBHDBWriter:
         """
         self._create_table_if_missing("candlesticks")
         cursor = self.connection.cursor()
+        
+        # Extract OHLC from nested 'price' object (Kalshi API format)
+        price = candle.get("price", {}) or {}
+        
         cursor.execute(
             """
             INSERT INTO candlesticks (
@@ -640,10 +652,10 @@ class QuestDBHDBWriter:
                 ticker,
                 series_ticker,
                 period_interval,
-                candle.get("open"),
-                candle.get("high"),
-                candle.get("low"),
-                candle.get("close"),
+                price.get("open"),
+                price.get("high"),
+                price.get("low"),
+                price.get("close"),
                 candle.get("volume"),
                 candle.get("open_interest"),
                 _parse_timestamp(candle.get("end_period_ts"), default_to_now=True),
@@ -679,6 +691,9 @@ class QuestDBHDBWriter:
         count = 0
         
         for candle in candles:
+            # Extract OHLC from nested 'price' object (Kalshi API format)
+            price = candle.get("price", {}) or {}
+            
             cursor.execute(
                 """
                 INSERT INTO candlesticks (
@@ -691,10 +706,10 @@ class QuestDBHDBWriter:
                     ticker,
                     series_ticker,
                     period_interval,
-                    candle.get("open"),
-                    candle.get("high"),
-                    candle.get("low"),
-                    candle.get("close"),
+                    price.get("open"),
+                    price.get("high"),
+                    price.get("low"),
+                    price.get("close"),
                     candle.get("volume"),
                     candle.get("open_interest"),
                     _parse_timestamp(candle.get("end_period_ts"), default_to_now=True),
@@ -962,6 +977,62 @@ class QuestDBHDBWriter:
         if self._connection:
             self._connection.close()
             self._connection = None
+
+
+def _extract_market_values(market: Dict[str, Any]) -> tuple:
+    """
+    Extract all market fields as a tuple for SQL insert.
+    
+    Args:
+        market: Market payload from Kalshi API
+        
+    Returns:
+        Tuple of values matching the markets table columns
+    """
+    return (
+        market.get("ticker"),
+        market.get("event_ticker"),
+        market.get("market_type"),
+        market.get("title"),
+        market.get("subtitle"),
+        market.get("yes_sub_title"),
+        market.get("no_sub_title"),
+        market.get("category"),
+        market.get("status"),
+        market.get("result"),
+        market.get("yes_bid"),
+        market.get("yes_ask"),
+        market.get("no_bid"),
+        market.get("no_ask"),
+        market.get("last_price"),
+        market.get("previous_yes_bid"),
+        market.get("previous_yes_ask"),
+        market.get("previous_price"),
+        market.get("volume"),
+        market.get("volume_24h"),
+        market.get("open_interest"),
+        market.get("liquidity"),
+        market.get("notional_value"),
+        market.get("settlement_value"),
+        market.get("risk_limit_cents"),
+        market.get("tick_size"),
+        market.get("settlement_timer_seconds"),
+        market.get("can_close_early"),
+        market.get("strike_type"),
+        market.get("floor_strike"),
+        market.get("cap_strike"),
+        market.get("functional_strike"),
+        market.get("expiration_value"),
+        market.get("rules_primary"),
+        market.get("rules_secondary"),
+        _parse_timestamp(market.get("open_time")),
+        _parse_timestamp(market.get("close_time")),
+        _parse_timestamp(market.get("expected_expiration_time")),
+        _parse_timestamp(market.get("expiration_time")),
+        _parse_timestamp(market.get("latest_expiration_time")),
+        _parse_timestamp(market.get("fee_waiver_expiration_time")),
+        _parse_timestamp(market.get("created_time"), default_to_now=True),
+    )
 
 
 def _parse_timestamp(value: Any, default_to_now: bool = False) -> Optional[datetime]:
