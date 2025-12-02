@@ -6,11 +6,14 @@ with exponential backoff, heartbeat, and sequence validation.
 """
 from __future__ import annotations
 import asyncio
+import base64
 import contextlib
 import json
 import logging
 import time
+from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, Iterable, Optional, Set
+
 import websockets
 from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
 
@@ -27,7 +30,8 @@ class KalshiWebSocketClient:
     
     Attributes:
         ws_url: WebSocket endpoint URL
-        auth_token: Optional bearer token for authenticated channels
+        api_key: Kalshi API key for authentication
+        private_key_path: Path to RSA private key for signing
         message_handler: Async callback invoked for each received message
         heartbeat_interval: Seconds between ping messages
         reconnect_backoff: Initial backoff delay in seconds (doubles on retry)
@@ -35,13 +39,15 @@ class KalshiWebSocketClient:
     def __init__(
         self,
         ws_url: str,
-        auth_token: Optional[str],
         message_handler: MessageHandler,
+        api_key: Optional[str] = None,
+        private_key_path: Optional[Path] = None,
         heartbeat_interval: float = 15.0,
         reconnect_backoff: float = 2.0,
     ) -> None:
         self.ws_url = ws_url
-        self.auth_token = auth_token
+        self.api_key = api_key
+        self.private_key_path = private_key_path
         self.message_handler = message_handler
         self.heartbeat_interval = heartbeat_interval
         self.reconnect_backoff = reconnect_backoff
@@ -49,6 +55,15 @@ class KalshiWebSocketClient:
         self._last_sequence: Dict[str, int] = {}
         self._last_heartbeat = time.time()
         self._running = False
+        self._private_key = None
+        
+        if self.private_key_path and self.private_key_path.exists():
+            from cryptography.hazmat.backends import default_backend
+            from cryptography.hazmat.primitives import serialization
+            with self.private_key_path.open("rb") as f:
+                self._private_key = serialization.load_pem_private_key(
+                    f.read(), password=None, backend=default_backend()
+                )
     
     def subscribe(self, channel: str, tickers: Iterable[str]) -> None:
         """
@@ -61,6 +76,32 @@ class KalshiWebSocketClient:
         merged = self._subscriptions.setdefault(channel, set())
         merged.update(token.upper() for token in tickers)
     
+    def _build_auth_headers(self) -> dict:
+        """Build RSA-PSS signed headers for Kalshi WebSocket auth."""
+        if not self.api_key or not self._private_key:
+            return {}
+        
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.asymmetric import padding
+        
+        ts_ms = str(int(time.time() * 1000))
+        msg_to_sign = f"{ts_ms}GET/trade-api/ws/v2"
+        
+        sig = self._private_key.sign(
+            msg_to_sign.encode("utf-8"),
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.DIGEST_LENGTH
+            ),
+            hashes.SHA256()
+        )
+        
+        return {
+            "KALSHI-ACCESS-KEY": self.api_key,
+            "KALSHI-ACCESS-SIGNATURE": base64.b64encode(sig).decode(),
+            "KALSHI-ACCESS-TIMESTAMP": ts_ms,
+        }
+    
     async def connect_forever(self) -> None:
         """
         Main loop maintaining persistent connection with exponential backoff.
@@ -72,14 +113,10 @@ class KalshiWebSocketClient:
         backoff = self.reconnect_backoff
         while self._running:
             try:
-                headers = {}
-                if self.auth_token:
-                    headers["Authorization"] = (
-                        f"Bearer {self.auth_token}"
-                    )
+                headers = self._build_auth_headers()
                 LOGGER.info("Connecting to %s", self.ws_url)
                 async with websockets.connect(
-                    self.ws_url, extra_headers=headers
+                    self.ws_url, additional_headers=headers
                 ) as ws:
                     await self._on_connect(ws)
                     await self._listen(ws)
@@ -115,27 +152,35 @@ class KalshiWebSocketClient:
     ) -> None:
         """Initialize heartbeat and push subscriptions."""
         self._last_heartbeat = time.time()
+        LOGGER.info("Connected successfully")
         await self._push_subscriptions(ws)
     
     async def _push_subscriptions(
         self, ws: websockets.WebSocketClientProtocol
     ) -> None:
         """
-        Send subscription message to server.
+        Send subscription messages to server per Kalshi format.
         
         Args:
             ws: Active WebSocket connection
         """
         if not self._subscriptions:
             return
-        payload = []
+        
+        msg_id = 1
         for channel, tickers in self._subscriptions.items():
-            payload.append(
-                {"channel": channel, "tickers": sorted(tickers)}
-            )
-        await ws.send(
-            json.dumps({"type": "subscribe", "subscriptions": payload})
-        )
+            ticker_list = sorted(tickers)
+            sub_msg = {
+                "id": msg_id,
+                "cmd": "subscribe",
+                "params": {
+                    "channels": [channel],
+                    "market_tickers": ticker_list,
+                }
+            }
+            await ws.send(json.dumps(sub_msg))
+            LOGGER.info(f"Subscribed to {channel} for {len(ticker_list)} tickers")
+            msg_id += 1
     
     async def _listen(self, ws: websockets.WebSocketClientProtocol) -> None:
         """

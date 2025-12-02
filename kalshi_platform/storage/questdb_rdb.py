@@ -82,21 +82,49 @@ class QuestDBRDBWriter:
         Write order book delta to 'orderbook_deltas' table.
         
         Args:
-            message: Delta payload with ticker, side, price, delta_size
+            message: Delta payload with ticker, side, price, delta
         """
         self._sender.row(
             "orderbook_deltas",
             symbols={
-                "ticker": message["ticker"],
+                "ticker": message.get("ticker") or message.get("market_ticker"),
                 "side": message.get("side"),
             },
             columns={
                 "price": message.get("price"),
-                "delta_size": message.get("delta_size"),
-                "sequence": message.get("sequence"),
+                "delta": message.get("delta"),
+                "seq": message.get("seq"),
             },
-            at=_timestamp_ns(message.get("timestamp")),
+            at=TimestampNanos.now(),
         )
+    
+    def write_orderbook_snapshot(self, ticker: str, seq: int, yes_levels: list, no_levels: list) -> None:
+        """
+        Write full orderbook snapshot to 'orderbook_snapshots' table.
+        
+        Args:
+            ticker: Market ticker
+            seq: Sequence number
+            yes_levels: List of [price, size] for yes side
+            no_levels: List of [price, size] for no side
+        """
+        ts = TimestampNanos.now()
+        
+        for price, size in yes_levels:
+            self._sender.row(
+                "orderbook_snapshots",
+                symbols={"ticker": ticker, "side": "yes"},
+                columns={"price": price, "size": size, "seq": seq},
+                at=ts,
+            )
+        
+        for price, size in no_levels:
+            self._sender.row(
+                "orderbook_snapshots",
+                symbols={"ticker": ticker, "side": "no"},
+                columns={"price": price, "size": size, "seq": seq},
+                at=ts,
+            )
     
     def write_ticker(self, message: Dict[str, Any]) -> None:
         """

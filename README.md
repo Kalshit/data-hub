@@ -66,6 +66,28 @@ python -m kalshi_platform.tools.generate_ohlc --reset
 python -m kalshi_platform.tools.check_consistency
 ```
 
+### Real-Time Streaming Tools
+
+| Tool | Command | Key Flags |
+|------|---------|-----------|
+| **Stream Order Book** | `python -m kalshi_platform.tools.stream_orderbook` | `--tickers`, `--series`, `--channels` |
+| **Migrate RDB→HDB** | `python -m kalshi_platform.tools.migrate_rdb_to_hdb` | `--date`, `--tables`, `--cleanup`, `--dry-run` |
+
+**Example Usage:**
+```bash
+# Stream order book for specific tickers
+python -m kalshi_platform.tools.stream_orderbook --tickers KXBTC-25DEC31
+
+# Stream all open markets in a series
+python -m kalshi_platform.tools.stream_orderbook --series KXBTC
+
+# Migrate yesterday's data from RDB to HDB
+python -m kalshi_platform.tools.migrate_rdb_to_hdb
+
+# Migrate specific date with cleanup
+python -m kalshi_platform.tools.migrate_rdb_to_hdb --date 2024-12-01 --cleanup
+```
+
 ### Demo & Recording Tools
 
 | Tool | Command | Key Flags |
